@@ -24,11 +24,14 @@ use crate::piet::{
     Color, FillRule, FontBuilder, Piet, RenderContext, Text, TextLayout, TextLayoutBuilder,
 };
 
+use std::marker::PhantomData;
+
 const BACKGROUND_GREY_LIGHT: Color = Color::rgba32(0x3a_3a_3a_ff);
 const BORDER_GREY: Color = Color::rgba32(0x5a_5a_5a_ff);
 const PRIMARY_LIGHT: Color = Color::rgba32(0x5c_c4_ff_ff);
 
 const TEXT_COLOR: Color = Color::rgb24(0xf0_f0_ea);
+const PLACEHOLDER_COLOR: Color = Color::rgba32(0xf0_f0_ea_88);
 const CURSOR_COLOR: Color = Color::WHITE;
 
 const BOX_HEIGHT: f64 = 24.;
@@ -38,13 +41,27 @@ const PADDING_TOP: f64 = 5.;
 const PADDING_LEFT: f64 = 4.;
 
 #[derive(Debug, Clone)]
-pub struct TextBox {
+pub struct TextBox<V, C, P, T> {
     width: f64,
+    value: Option<V>,
+    placeholder: Option<P>,
+    on_change: Option<C>,
+    phantom: PhantomData<T>,
 }
 
-impl TextBox {
-    pub fn new(width: f64) -> TextBox {
-        TextBox { width }
+impl <V, C, P, T> TextBox<V, C, P, T> where
+    V: Fn(&T) -> String,
+    C: Fn(String, &mut T),
+    P: Fn() -> String
+{
+    pub fn new(width: f64) -> Self {
+        Self {
+            width,
+            value: None,
+            placeholder: None,
+            on_change: None,
+            phantom: Default::default(),
+        }
     }
 
     fn get_layout(
@@ -61,14 +78,49 @@ impl TextBox {
             .unwrap();
         text.new_text_layout(&font, data).unwrap().build().unwrap()
     }
+
+    pub fn value(mut self, v: V) -> Self {
+        self.value = Some(v);
+        self
+    }
+
+    pub fn placeholder(mut self, p: P) -> Self {
+        self.placeholder = Some(p);
+        self
+    }
+
+    pub fn on_change(mut self, o: C) -> Self {
+        self.on_change = Some(o);
+        self
+    }
+
+    fn get_text(&self, data: &T) -> String {
+        match self.value {
+            Some(ref v) => v(data),
+            None => "no value".to_string(),
+        }
+    }
+
+    fn change_text(&self, data: &mut T, text: String) {
+        match self.on_change {
+            Some(ref o) => {
+                o(text, data);
+            },
+            None => {},
+        }
+    }
 }
 
-impl Widget<String> for TextBox {
+impl <V, C, P, T> Widget<T> for TextBox<V, C, P, T> where
+    V: Fn(&T) -> String,
+    C: Fn(String, &mut T),
+    P: Fn() -> String
+{
     fn paint(
         &mut self,
         paint_ctx: &mut PaintCtx,
         base_state: &BaseState,
-        data: &String,
+        data: &T,
         _env: &Env,
     ) {
         let is_active = base_state.is_active();
@@ -102,9 +154,18 @@ impl Widget<String> for TextBox {
             .stroke(clip_rect, &border_brush, BORDER_WIDTH, None);
 
         // Paint the text
+        let mut text_value = self.get_text(data);
+        let text_color = match self.placeholder {
+            Some(ref p) if text_value.is_empty() => {
+                text_value = p();
+                PLACEHOLDER_COLOR
+            },
+            _ => TEXT_COLOR,
+        };
+
         let text = paint_ctx.render_ctx.text();
-        let text_layout = self.get_layout(text, FONT_SIZE, data);
-        let brush = paint_ctx.render_ctx.solid_brush(TEXT_COLOR);
+        let text_layout = self.get_layout(text, FONT_SIZE, &text_value);
+        let brush = paint_ctx.render_ctx.solid_brush(text_color);
 
         let text_height = FONT_SIZE * 0.8;
         let text_pos = Point::new(0.0 + PADDING_LEFT, text_height + PADDING_TOP);
@@ -135,7 +196,7 @@ impl Widget<String> for TextBox {
         &mut self,
         _layout_ctx: &mut LayoutCtx,
         _bc: &BoxConstraints,
-        _data: &String,
+        _data: &T,
         _env: &Env,
     ) -> Size {
         Size::new(self.width, BOX_HEIGHT)
@@ -145,7 +206,7 @@ impl Widget<String> for TextBox {
         &mut self,
         event: &Event,
         ctx: &mut EventCtx,
-        data: &mut String,
+        data: &mut T,
         _env: &Env,
     ) -> Option<Action> {
         match event {
@@ -160,14 +221,14 @@ impl Widget<String> for TextBox {
             Event::KeyDown(key_event) => {
                 match key_event {
                     event if event.key_code == KeyCode::Backspace => {
-                        let mut text = data.clone();
+                        let mut text = self.get_text(data);
                         text.pop();
-                        *data = text.to_string();
+                        self.change_text(data, text);
                     }
                     event if event.key_code.is_printable() => {
-                        let mut text = data.clone();
+                        let mut text = self.get_text(data);
                         text.push_str(event.text().unwrap_or(""));
-                        *data = text.to_string();
+                        self.change_text(data, text);
                     }
                     _ => {}
                 }
@@ -181,8 +242,8 @@ impl Widget<String> for TextBox {
     fn update(
         &mut self,
         ctx: &mut UpdateCtx,
-        _old_data: Option<&String>,
-        _data: &String,
+        _old_data: Option<&T>,
+        _data: &T,
         _env: &Env,
     ) {
         ctx.invalidate();

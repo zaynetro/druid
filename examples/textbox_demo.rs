@@ -14,7 +14,18 @@
 
 use druid::shell::{runloop, WindowBuilder};
 use druid::widget::{Column, DynLabel, Padding, TextBox};
-use druid::{UiMain, UiState};
+use druid::{UiMain, UiState, Data};
+
+#[derive(Debug, Clone)]
+struct AppData {
+    text: String,
+}
+
+impl Data for AppData {
+    fn same(&self, o: &Self) -> bool {
+        self.text == o.text
+    }
+}
 
 fn main() {
     druid::shell::init();
@@ -23,13 +34,20 @@ fn main() {
     let mut builder = WindowBuilder::new();
     let mut col = Column::new();
 
-    let textbox = TextBox::new(200.);
-    let label = DynLabel::new(|data: &String, _env| format!("value: {}", data));
+    let textbox = TextBox::new(200.)
+        .placeholder(|| "Input text...".to_string())
+        .value(|data: &AppData| data.text.clone())
+        .on_change(|v: String, data: &mut AppData| {
+            data.text = v.to_string();
+        });
+    let label = DynLabel::new(|data: &AppData, _env| format!("value: {}", data.text));
 
     col.add_child(Padding::uniform(5.0, textbox), 1.0);
     col.add_child(Padding::uniform(5.0, label), 1.0);
 
-    let state = UiState::new(col, "typing is fun!".to_string());
+    let state = UiState::new(col, AppData{
+        text: "typing is fun!".to_string(),
+    });
     builder.set_title("TextBox example");
     builder.set_handler(Box::new(UiMain::new(state)));
     let window = builder.build().unwrap();
