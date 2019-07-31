@@ -40,19 +40,17 @@ const BORDER_WIDTH: f64 = 1.;
 const PADDING_TOP: f64 = 5.;
 const PADDING_LEFT: f64 = 4.;
 
-#[derive(Debug, Clone)]
-pub struct TextBox<V, C, P, T> {
+pub struct TextBox<V, C, T> {
     width: f64,
     value: Option<V>,
-    placeholder: Option<P>,
+    placeholder: Option<Box<dyn Fn() -> String>>,
     on_change: Option<C>,
     phantom: PhantomData<T>,
 }
 
-impl <V, C, P, T> TextBox<V, C, P, T> where
+impl <V, C, T> TextBox<V, C, T> where
     V: Fn(&T) -> String,
     C: Fn(String, &mut T),
-    P: Fn() -> String
 {
     pub fn new(width: f64) -> Self {
         Self {
@@ -84,8 +82,8 @@ impl <V, C, P, T> TextBox<V, C, P, T> where
         self
     }
 
-    pub fn placeholder(mut self, p: P) -> Self {
-        self.placeholder = Some(p);
+    pub fn placeholder(mut self, p: impl Fn() -> String + 'static) -> Self {
+        self.placeholder = Some(Box::new(p));
         self
     }
 
@@ -111,10 +109,9 @@ impl <V, C, P, T> TextBox<V, C, P, T> where
     }
 }
 
-impl <V, C, P, T> Widget<T> for TextBox<V, C, P, T> where
+impl <V, C, T> Widget<T> for TextBox<V, C, T> where
     V: Fn(&T) -> String,
     C: Fn(String, &mut T),
-    P: Fn() -> String
 {
     fn paint(
         &mut self,
