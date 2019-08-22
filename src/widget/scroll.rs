@@ -25,6 +25,23 @@ use crate::piet::RenderContext;
 
 use crate::kurbo::Affine;
 
+#[derive(Debug, Clone)]
+enum ScrollDirection {
+    Horizonal,
+    Vertical,
+    All,
+}
+
+impl ScrollDirection {
+    pub fn max_size(&self, bc: &BoxConstraints) -> Size {
+        match self {
+            ScrollDirection::Horizonal => Size::new(INFINITY, bc.max().height),
+            ScrollDirection::Vertical => Size::new(bc.max().width, INFINITY),
+            ScrollDirection::All => Size::new(INFINITY, INFINITY),
+        }
+    }
+}
+
 /// A container that scrolls its contents.
 ///
 /// This container holds a single child, and uses the wheel to scroll it
@@ -35,6 +52,7 @@ pub struct Scroll<T: Data> {
     child: WidgetPod<T, Box<dyn Widget<T>>>,
     child_size: Size,
     scroll_offset: Vec2,
+    direction: ScrollDirection,
 }
 
 impl<T: Data> Scroll<T> {
@@ -44,7 +62,13 @@ impl<T: Data> Scroll<T> {
             child: WidgetPod::new(child).boxed(),
             child_size: Default::default(),
             scroll_offset: Vec2::new(0.0, 0.0),
+            direction: ScrollDirection::All,
         }
+    }
+
+    pub fn vertical(mut self) -> Self {
+        self.direction = ScrollDirection::Vertical;
+        self
     }
 
     /// Update the scroll.
@@ -79,7 +103,7 @@ impl<T: Data> Widget<T> for Scroll<T> {
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
-        let child_bc = BoxConstraints::new(Size::ZERO, Size::new(INFINITY, INFINITY));
+        let child_bc = BoxConstraints::new(Size::ZERO, self.direction.max_size(bc));
         let size = self.child.layout(ctx, &child_bc, data, env);
         self.child_size = size;
         self.child

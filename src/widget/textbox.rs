@@ -102,9 +102,9 @@ pub struct TextBox {
 
 impl TextBox {
     /// Create a new TextBox widget with a width set in pixels
-    pub fn new(width: f64) -> TextBox {
+    pub fn new() -> TextBox {
         TextBox {
-            width,
+            width: 1.,
             hscroll_offset: 0.,
             selection: Selection::caret(0),
             cursor_timer: TimerToken::INVALID,
@@ -298,7 +298,9 @@ impl Widget<String> for TextBox {
         _data: &String,
         _env: &Env,
     ) -> Size {
-        bc.constrain((self.width, BOX_HEIGHT))
+        let size = bc.constrain((bc.max().width, BOX_HEIGHT));
+        self.width = size.width;
+        size
     }
 
     fn event(
@@ -425,6 +427,7 @@ fn next_grapheme(src: &str, from: usize) -> usize {
 
 fn prev_grapheme(src: &str, from: usize) -> usize {
     let mut c = GraphemeCursor::new(from, src.len(), true);
+    // TODO: unwrap panics!
     let prev_boundary = c.prev_boundary(src, 0).unwrap();
     if let Some(prev) = prev_boundary {
         prev
