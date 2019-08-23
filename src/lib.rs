@@ -349,6 +349,7 @@ pub struct UpdateCtx<'a, 'b> {
     // `EventCtx` (and possibly using the same structure). But for
     // now keep it super-simple.
     needs_inval: bool,
+    request_anim: bool,
 }
 
 /// An action produced by a widget.
@@ -604,6 +605,9 @@ impl<T: Data, W: Widget<T>> WidgetPod<T, W> {
             return;
         }
         self.inner.update(ctx, self.old_data.as_ref(), data, env);
+        if ctx.request_anim {
+            self.state.request_anim = true;
+        }
         self.old_data = Some(data.clone());
         self.env = Some(env.clone());
     }
@@ -704,12 +708,14 @@ impl<T: Data> UiState<T> {
             win_ctx,
             window: &self.handle,
             needs_inval: false,
+            request_anim: false,
         };
         // Note: we probably want to aggregate updates so there's only one after
         // a burst of events.
         self.root.update(&mut update_ctx, &self.data, &self.env);
+
         // TODO: process actions
-        let dirty = request_anim || needs_inval || update_ctx.needs_inval;
+        let dirty = request_anim || needs_inval || update_ctx.needs_inval || update_ctx.request_anim;
         (is_handled, dirty)
     }
 
@@ -1046,6 +1052,11 @@ impl<'a, 'b> UpdateCtx<'a, 'b> {
     /// more discussion.
     pub fn invalidate(&mut self) {
         self.needs_inval = true;
+    }
+
+    /// Request an animation frame.
+    pub fn request_anim_frame(&mut self) {
+        self.request_anim = true;
     }
 
     /// Get an object which can create text layouts.
