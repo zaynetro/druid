@@ -89,6 +89,14 @@ impl Selection {
     pub fn range(self) -> Range<usize> {
         self.min()..self.max()
     }
+
+    /// Constraint selection to be not greater than input string
+    pub fn constraint_to(mut self, s: &str) -> Self {
+        let s_len = s.chars().count();
+        self.start = min(self.start, s_len);
+        self.end = min(self.end, s_len);
+        self
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -124,8 +132,14 @@ impl TextBox {
 
     fn insert(&mut self, src: &mut String, new: &str) {
         // TODO: handle incomplete graphemes
-        src.replace_range(self.selection.range(), new);
-        self.selection = Selection::caret(self.selection.min() + new.len());
+
+        // replace_range will panic if selection is greater than src length hence we try to constraint it.
+        // This is needed when data was modified externally.
+        // TODO: should we handle this in update lifecycle method instead?
+        let selection = self.selection.constraint_to(src);
+
+        src.replace_range(selection.range(), new);
+        self.selection = Selection::caret(selection.min() + new.len());
     }
 
     fn cursor_to(&mut self, to: usize) {
@@ -354,6 +368,7 @@ impl Widget<String> for TextBox {
                     }
                     // Jump right (Ctrl+ArrowRight || Cmd+ArrowRight)
                     k_e if (HotKey::new(SysMods::Cmd, KeyCode::ArrowRight)).matches(k_e) => {
+                        // TODO: should this be data.chars().count() ?
                         self.cursor_to(data.len());
                         self.reset_cursor_blink(ctx);
                     }
