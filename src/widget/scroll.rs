@@ -25,6 +25,27 @@ use crate::piet::RenderContext;
 
 use crate::kurbo::Affine;
 
+#[derive(Debug, Clone)]
+enum ScrollDirection {
+    Horizontal,
+    Vertical,
+    All,
+}
+
+impl ScrollDirection {
+    /// Return the maximum size the container can be given
+    /// its scroll direction and box constraints.
+    /// In practice vertical scrolling will be width limited to
+    /// box constraints and horizontal will be height limited.
+    pub fn max_size(&self, bc: &BoxConstraints) -> Size {
+        match self {
+            ScrollDirection::Horizontal => Size::new(INFINITY, bc.max().height),
+            ScrollDirection::Vertical => Size::new(bc.max().width, INFINITY),
+            ScrollDirection::All => Size::new(INFINITY, INFINITY),
+        }
+    }
+}
+
 /// A container that scrolls its contents.
 ///
 /// This container holds a single child, and uses the wheel to scroll it
@@ -35,15 +56,21 @@ pub struct Scroll<T: Data> {
     child: WidgetPod<T, Box<dyn Widget<T>>>,
     child_size: Size,
     scroll_offset: Vec2,
+    direction: ScrollDirection,
 }
 
 impl<T: Data> Scroll<T> {
     /// Create a new scroll container.
+    ///
+    /// This method will allow scrolling in all directions if child's bounds
+    /// are larger than the viewport. Use [vertical](#method.vertical)
+    /// and [horizontal](#method.horizontal) methods to limit scroll behavior.
     pub fn new(child: impl Widget<T> + 'static) -> Scroll<T> {
         Scroll {
             child: WidgetPod::new(child).boxed(),
             child_size: Default::default(),
             scroll_offset: Vec2::new(0.0, 0.0),
+            direction: ScrollDirection::All,
         }
     }
 
@@ -60,6 +87,20 @@ impl<T: Data> Scroll<T> {
         } else {
             false
         }
+    }
+
+    /// Limit scroll behavior to allow only vertical scrolling (Y-axis).
+    /// The child is laid out with constrained width and infinite height.
+    pub fn vertical(mut self) -> Self {
+        self.direction = ScrollDirection::Vertical;
+        self
+    }
+
+    /// Limit scroll behavior to allow only horizontal scrolling (X-axis).
+    /// The child is laid out with constrained height and infinite width.
+    pub fn horizontal(mut self) -> Self {
+        self.direction = ScrollDirection::Horizontal;
+        self
     }
 }
 
@@ -79,7 +120,7 @@ impl<T: Data> Widget<T> for Scroll<T> {
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
-        let child_bc = BoxConstraints::new(Size::ZERO, Size::new(INFINITY, INFINITY));
+        let child_bc = BoxConstraints::new(Size::ZERO, self.direction.max_size(bc));
         let size = self.child.layout(ctx, &child_bc, data, env);
         self.child_size = size;
         self.child

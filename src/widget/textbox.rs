@@ -89,8 +89,17 @@ impl Selection {
     pub fn range(self) -> Range<usize> {
         self.min()..self.max()
     }
+
+    /// Constrain selection to be not greater than input string
+    pub fn constrain_to(mut self, s: &str) -> Self {
+        let s_len = s.len();
+        self.start = min(self.start, s_len);
+        self.end = min(self.end, s_len);
+        self
+    }
 }
 
+/// A widget that allows user text input.
 #[derive(Debug, Clone)]
 pub struct TextBox {
     width: f64,
@@ -124,8 +133,13 @@ impl TextBox {
 
     fn insert(&mut self, src: &mut String, new: &str) {
         // TODO: handle incomplete graphemes
-        src.replace_range(self.selection.range(), new);
-        self.selection = Selection::caret(self.selection.min() + new.len());
+
+        // replace_range will panic if selection is greater than src length hence we try to constrain it.
+        // This is especially needed when data was modified externally.
+        let selection = self.selection.constrain_to(src);
+
+        src.replace_range(selection.range(), new);
+        self.selection = Selection::caret(selection.min() + new.len());
     }
 
     fn cursor_to(&mut self, to: usize) {
@@ -431,4 +445,33 @@ fn prev_grapheme(src: &str, from: usize) -> usize {
     } else {
         0
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that when data is mutated externally widget
+    /// can still be used to insert characters.
+    #[test]
+    fn data_can_be_changed_externally() {
+        let mut widget = TextBox::new(100.);
+        let mut data = "".to_string();
+
+        // First insert some chars
+        widget.insert(&mut data, "o");
+        widget.insert(&mut data, "n");
+        widget.insert(&mut data, "e");
+
+        assert_eq!("one", data);
+        assert_eq!(3, widget.selection.start);
+        assert_eq!(3, widget.selection.end);
+
+        // Modify data externally (e.g data was changed in the parent widget)
+        data = "".to_string();
+
+        // Insert again
+        widget.insert(&mut data, "a");
+    }
+
 }
