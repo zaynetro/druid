@@ -125,6 +125,18 @@ impl<T: Data> Flex<T> {
         };
         self.children.push(child);
     }
+
+    pub fn child(mut self, child: impl Widget<T> + 'static, flex: f64) -> Self {
+        self.add_child(child, flex);
+        self
+    }
+
+    pub fn children<C>(mut self, iter: impl Iterator<Item = C>, cb: impl Fn(C, &mut Self)) -> Self {
+        for el in iter {
+            cb(el, &mut self);
+        }
+        self
+    }
 }
 
 impl<T: Data> Widget<T> for Flex<T> {

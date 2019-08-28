@@ -82,4 +82,15 @@ impl<T> Data for Arc<T> {
     }
 }
 
+impl <T: Data> Data for Option<T> {
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Some(s), Some(o)) => s.same(o),
+            (Some(_), None) => false,
+            (None, Some(_)) => false,
+            (None, None) => true,
+        }
+    }
+}
+
 // TODO: derive macro
