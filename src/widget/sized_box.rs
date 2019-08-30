@@ -16,11 +16,13 @@
 
 use std::f64::INFINITY;
 
-use crate::shell::kurbo::Size;
 use crate::{
     Action, BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx,
     Widget,
 };
+use crate::piet::{Color};
+use crate::piet::RenderContext;
+use crate::shell::kurbo::{Point, Rect, Size};
 
 /// A widget with predefined size.
 ///
@@ -35,16 +37,15 @@ pub struct SizedBox<T: Data> {
     inner: Option<Box<dyn Widget<T>>>,
     width: Option<f64>,
     height: Option<f64>,
+    bg: Option<Color>,
 }
 
 impl<T: Data> SizedBox<T> {
     /// Construct container with child, and both width and height not set.
     pub fn new(inner: impl Widget<T> + 'static) -> Self {
-        Self {
-            inner: Some(Box::new(inner)),
-            width: None,
-            height: None,
-        }
+        let mut b = Self::empty();
+        b.inner = Some(Box::new(inner));
+        b
     }
 
     /// Construct container without child, and both width and height not set.
@@ -53,6 +54,7 @@ impl<T: Data> SizedBox<T> {
             inner: None,
             width: None,
             height: None,
+            bg: None,
         }
     }
 
@@ -75,10 +77,21 @@ impl<T: Data> SizedBox<T> {
         self.height = Some(INFINITY);
         self
     }
+
+    pub fn bg(mut self, c: Color) -> Self {
+        self.bg = Some(c);
+        self
+    }
 }
 
 impl<T: Data> Widget<T> for SizedBox<T> {
     fn paint(&mut self, paint_ctx: &mut PaintCtx, base_state: &BaseState, data: &T, env: &Env) {
+        if let Some(ref color) = self.bg {
+            // Paint the background
+            let rect = Rect::ZERO.with_size(base_state.size());
+            paint_ctx.fill(rect, color);
+        }
+
         if let Some(ref mut inner) = self.inner {
             inner.paint(paint_ctx, base_state, data, env);
         }

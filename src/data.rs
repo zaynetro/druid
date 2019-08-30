@@ -82,4 +82,11 @@ impl<T> Data for Arc<T> {
     }
 }
 
+impl<T: Data> Data for Vec<T> {
+    fn same(&self, other: &Self) -> bool {
+        // TODO: this is not complete
+        self.len() == other.len()
+    }
+}
+
 // TODO: derive macro
