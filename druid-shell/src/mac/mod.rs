@@ -279,8 +279,8 @@ lazy_static! {
             handle_menu_item as extern "C" fn(&mut Object, Sel, id),
         );
         decl.add_method(
-            sel!(dispatchMenuItem:),
-            dispatch_menu_item as extern "C" fn(&mut Object, Sel, id),
+            sel!(showContextMenu:),
+            show_context_menu as extern "C" fn(&mut Object, Sel, id),
         );
         ViewClass(decl.register())
     };
@@ -307,7 +307,6 @@ fn make_view(handler: Box<dyn WinHandler>) -> (id, Weak<Mutex<Vec<Box<dyn IdleCa
 }
 
 extern "C" fn set_frame_size(this: &mut Object, _: Sel, size: NSSize) {
-    info!("size: {}x{}", size.width, size.height);
     unsafe {
         let view_state: *mut c_void = *this.get_ivar("viewState");
         let view_state = &mut *(view_state as *mut ViewState);
@@ -569,16 +568,6 @@ extern "C" fn handle_timer(this: &mut Object, _: Sel, timer: id) {
 
 extern "C" fn handle_menu_item(this: &mut Object, _: Sel, item: id) {
     unsafe {
-        // in the case of right-click menus, to avoid reentring rust while
-        // holding a RefMut, we need to delay calling back until the next pass
-        // of the runloop.
-        let () = msg_send![this as *const _, performSelectorOnMainThread: sel!(dispatchMenuItem:)
-            withObject: item waitUntilDone: NO];
-    }
-}
-
-extern "C" fn dispatch_menu_item(this: &mut Object, _: Sel, item: id) {
-    unsafe {
         let tag: isize = msg_send![item, tag];
         let view_state: *mut c_void = *this.get_ivar("viewState");
         let view_state = &mut *(view_state as *mut ViewState);
@@ -587,6 +576,16 @@ extern "C" fn dispatch_menu_item(this: &mut Object, _: Sel, item: id) {
             text: Text::new(),
         };
         (*view_state).handler.command(tag as u32, &mut ctx);
+    }
+}
+
+extern "C" fn show_context_menu(this: &mut Object, _: Sel, item: id) {
+    unsafe {
+        let window: id = msg_send![this as *const _, window];
+        let mut location: NSPoint = msg_send![window, mouseLocationOutsideOfEventStream];
+        let bounds: NSRect = msg_send![this as *const _, bounds];
+        location.y = bounds.size.height - location.y;
+        let _: BOOL = msg_send![item, popUpMenuPositioningItem: nil atLocation: location inView: this as *const _];
     }
 }
 
@@ -615,7 +614,7 @@ impl WindowHandle {
                     .init_str(NSWindowDidBecomeKeyNotification)
                     .autorelease();
                 let notif_center: id = msg_send![notif_center_class, defaultCenter];
-                msg_send![notif_center, addObserver:*nsview.load() selector: sel!(windowDidBecomeKey:) name: notif_string object: window];
+                let () = msg_send![notif_center, addObserver:*nsview.load() selector: sel!(windowDidBecomeKey:) name: notif_string object: window];
                 window.makeKeyAndOrderFront_(nil)
             }
         }
@@ -659,11 +658,13 @@ impl WindowHandle {
         }
     }
 
-    pub fn show_context_menu(&self, menu: Menu, x: f64, y: f64) {
+    //FIXME: we should be using the x, y values passed by the caller, but then
+    //we have to figure out some way to pass them along with this performSelector:
+    //call. This isn't super hard, I'm just not up for it right now.
+    pub fn show_context_menu(&self, menu: Menu, _x: f64, _y: f64) {
         if let Some(ref nsview) = self.nsview {
             unsafe {
-                let location = NSPoint::new(x, y);
-                msg_send![menu.menu, popUpMenuPositioningItem: nil atLocation: location inView: *nsview.load()];
+                let () = msg_send![*nsview.load(), performSelectorOnMainThread: sel!(showContextMenu:) withObject: menu.menu waitUntilDone: NO];
             }
         }
     }
@@ -720,9 +721,10 @@ impl WindowHandle {
     ) -> Result<OsString, Error> {
         match ty {
             FileDialogType::Open => unsafe {
-                dialog::show_open_file_dialog_sync(options).ok_or(Error::Null)
+                dialog::show_open_file_dialog_sync(options)
+                    .ok_or(Error::Other("failed to open file dialog"))
             },
-            _ => Err(Error::Null),
+            _ => Err(Error::Other("unhandled FileDialogType")),
         }
     }
 }
@@ -778,7 +780,7 @@ impl<'a> WinCtx<'a> for WinCtxImpl<'a> {
                 Cursor::ResizeLeftRight => msg_send![nscursor, resizeLeftRightCursor],
                 Cursor::ResizeUpDown => msg_send![nscursor, ResizeUpDownCursor],
             };
-            msg_send![cursor, set];
+            let () = msg_send![cursor, set];
         }
     }
 
@@ -791,7 +793,7 @@ impl<'a> WinCtx<'a> for WinCtxImpl<'a> {
             let user_info: id = msg_send![nsnumber, numberWithUnsignedInteger: token];
             let selector = sel!(handleTimer:);
             let view = self.nsview.load();
-            msg_send![nstimer, scheduledTimerWithTimeInterval: ti target: view selector: selector userInfo: user_info repeats: NO];
+            let _: id = msg_send![nstimer, scheduledTimerWithTimeInterval: ti target: view selector: selector userInfo: user_info repeats: NO];
         }
         TimerToken::new(token)
     }
